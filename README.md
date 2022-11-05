@@ -6,7 +6,7 @@
 ![GitHub](https://img.shields.io/github/license/SlavovLab/DO-MS.svg)
 
 * **plexDIA Websites:** [plexDIA.slavovlab.net](https://plexDIA.slavovlab.net) &nbsp; | &nbsp; [scp.slavovlab.net/plexDIA](https://scp.slavovlab.net/plexDIA)
-* **Perspective article:** [Preprint](https://www.biorxiv.org/content/10.1101/2021.11.03.467007v2) <!-- &nbsp; | &nbsp; [*Nature Biotechnology* Article](https://doi.org/10.1038/s41587-022-01389-w) -->
+* **Perspective article:** [Preprint](https://www.biorxiv.org/content/10.1101/2022.11.05.515287v1) <!-- &nbsp; | &nbsp; [*Nature Biotechnology* Article](https://doi.org/10.1038/s41587-022-01389-w) -->
 
 
 &nbsp;
