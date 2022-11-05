@@ -1,0 +1,180 @@
+---
+title: "plexDIA_opportunities"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Functions
+```{r}
+
+#get ratio of precursors between plexDIA channels:
+pD_PrecRatios <- function(df, quant.header = "Ms1.Area_iso"){
+  df <- ev
+  df <- pD_seqcharge(df)
+  df <- pD_channel(df)
+  df <- pD_rmMixSpec(df)
+  df$run_chan <- paste0(df$Run, "_", df$channel_name)
+  df$seqcharge_file <- paste0(df$Run, "_", df$seqcharge)
+  ev2_04 <- reshape2::dcast(df, seqcharge_file+Stripped.Sequence+seqcharge+Run+Protein.Names~channel_name, value.var = quant.header)
+  ev2_04[(ev2_04==0)] <- NA
+  ev2_04$d0_d4 <- ev2_04$mTRAQ0/ev2_04$mTRAQ4
+  ev2_04$d0_d8 <- ev2_04$mTRAQ0/ev2_04$mTRAQ8
+  ev2_04$d4_d8 <- ev2_04$mTRAQ4/ev2_04$mTRAQ8
+  med_summary <- ev2_04 %>% dplyr::filter(grepl("HUMAN", Protein.Names)) %>%
+    dplyr::group_by(Run) %>% 
+    dplyr::summarise_at(c("d0_d4", "d0_d8", "d4_d8"), median, na.rm = TRUE)%>%
+    reshape2::melt(.data)
+  med_summary <- med_summary[-1,]
+  colnames(med_summary) <- c("labs", "med")
+  med_summary$scalar <- 1/as.numeric(med_summary$med)
+  
+  ev2_04_m <- reshape2::melt(ev2_04)
+  ev2_04_m <- ev2_04_m[!grepl("mTRAQ", ev2_04_m$variable),]
+  ev2_04_m <- ev2_04_m %>% left_join(med_summary, by =c("variable" = "labs"))
+  ev2_04_m <- ev2_04_m[!is.na(ev2_04_m$value),]
+  ev2_04_m$rat_norm <- ev2_04_m$value*ev2_04_m$scalar
+  
+  return(ev2_04_m)
+}
+
+#Some quick data wrangling functions:
+pD_channel <- function(df){
+  
+  df <- df %>% dplyr::mutate("channel_name" = ifelse(grepl("-0|mTRAQ0", Modified.Sequence), "mTRAQ0",
+                                              ifelse(grepl("-4|mTRAQ4", Modified.Sequence), "mTRAQ4", "mTRAQ8")))
+  
+  return(df)
+}
+
+pD_seqcharge <- function(df){
+  df$seqcharge <- paste0(df$Modified.Sequence, df$Precursor.Charge)
+  df$seqcharge <- str_remove_all(df$seqcharge, "\\(mTRAQ0\\)")
+  df$seqcharge <- str_remove_all(df$seqcharge, "\\(mTRAQ\\)")
+  df$seqcharge <- str_remove_all(df$seqcharge, "\\(mTRAQ-K-0\\)")
+  df$seqcharge <- str_remove_all(df$seqcharge, "\\(mTRAQ-n-0\\)")
+  df$seqcharge <- str_remove_all(df$seqcharge, "\\(mTRAQ4\\)")
+  df$seqcharge <- str_remove_all(df$seqcharge, "\\(mTRAQ-K-4\\)")
+  df$seqcharge <- str_remove_all(df$seqcharge, "\\(mTRAQ-n-4\\)")
+  df$seqcharge <- str_remove_all(df$seqcharge, "\\(mTRAQ8\\)")
+  df$seqcharge <- str_remove_all(df$seqcharge, "\\(mTRAQ-K-8\\)")
+  df$seqcharge <- str_remove_all(df$seqcharge, "\\(mTRAQ-n-8\\)")
+  return(df)
+}
+
+pD_rmMixSpec <- function(df){
+  df$HY<-F
+  df$HY[grepl("HUMAN",df$Protein.Names) & grepl("YEAST",df$Protein.Names) & grepl("ECOLI",df$Protein.Names)] <-T
+  df$HY[grepl("HUMAN",df$Protein.Names) & grepl("ECOLI",df$Protein.Names)] <-T
+  df$HY[grepl("HUMAN",df$Protein.Names) & grepl("YEAST",df$Protein.Names)] <-T
+  df$HY[grepl("ECOLI",df$Protein.Names) & grepl("YEAST",df$Protein.Names)] <-T
+  table(df$HY)
+  df <- df[grepl("FALSE", df$HY),] %>% dplyr::select(-"HY")
+  
+  return(df)
+}
+
+pD_species <- function(df){
+  
+  df <- df%>% dplyr::mutate("species" = ifelse(grepl("ECOLI", Protein.Names), "E. coli",
+                                        ifelse(grepl("HUMAN", Protein.Names), "H. sapiens",
+                                               ifelse(grepl("YEAST", Protein.Names), "S. cerevisiae", "remove"))))
+  
+  df <- df[!grepl("remove", df$species),]
+  
+  return(df)
+}
+
+pD_Cterm <- function(df){
+  df$Cterm <- str_sub(df$Stripped.Sequence, -1, -1)
+  df <- df %>% dplyr::mutate("Cterm" = ifelse(grepl("K", Cterm), "K", "R"))
+}
+
+'%!in%' <- function(x,y)!('%in%'(x,y))
+
+```
+
+Load libraries and specify file paths
+```{r}
+
+library(stringr)
+library(tidyr)
+library(ggplot2)
+library(reshape2)
+library(data.table)
+library(dplyr)
+
+'%!in%' <- function(x,y)!('%in%'(x,y))
+
+fpath <- "/pD_HYE_MS1/Report.tsv" #plexDIA file path V1 method (pD_HYE_MS1)
+```
+
+Precursor quantitative accuracy for MS1 and MS2, translated and regular
+```{r}
+pD <- data.frame(fread(fpath))
+
+ev <- pD[grepl("wJD804", pD$Run),]
+ev_MS2 <- pD_PrecRatios(ev, quant.header = "Precursor.Quantity")
+ev_MS2$Quant <- "MS2"
+
+ev_MS2_trans <- pD_PrecRatios(ev, quant.header = "Precursor.Translated")
+ev_MS2_trans$Quant <- "MS2 translated"
+
+ev <- rbind(ev_MS2_trans, ev_MS2)
+ev <- pD_species(ev)
+ev$lab_species <- paste0(ev$variable, "_", ev$species)
+df1<- data.frame(species = c("d0_d4_E. coli", "d0_d4_H. sapiens", "d0_d4_S. cerevisiae", "d0_d8_E. coli", "d0_d8_S. cerevisiae", "d4_d8_E. coli", "d4_d8_S. cerevisiae"), Z = c(2, 0, -1, log2(2/3), log2(3), log2(1/6), log2(6)))
+ev <- ev %>% left_join(df1, by =c("lab_species" = "species"))
+ev$seq_run_var <- paste0(ev$seqcharge_file, ev$variable)
+ev <- ev %>% dplyr::group_by(seq_run_var) %>% dplyr::add_count() %>% dplyr::filter(n==2) #require quant in MS1 and MS2
+ev <- ev[!is.na(ev$Z),] #removes human in d0_d8 and d4_d8 comparisons because they compare U937 and Jurkat cell lines
+ev <- ev %>% dplyr::select(-"n")
+ev$error <- abs(log2(ev$value)-ev$Z)
+MS2_info <- ev
+
+######### MS1 area vs MS1 translated:
+ev <- pD[grepl("wJD804", pD$Run),]
+ev_MS1 <- pD_PrecRatios(ev, quant.header = "Ms1.Area")
+ev_MS1$Quant <- "MS1"
+
+ev_MS1_trans <- pD_PrecRatios(ev, quant.header = "Ms1.Translated")
+ev_MS1_trans$Quant <- "MS1 translated"
+
+ev <- rbind(ev_MS1_trans, ev_MS1)
+ev <- pD_species(ev)
+ev$lab_species <- paste0(ev$variable, "_", ev$species)
+df1<- data.frame(species = c("d0_d4_E. coli", "d0_d4_H. sapiens", "d0_d4_S. cerevisiae", "d0_d8_E. coli", "d0_d8_S. cerevisiae", "d4_d8_E. coli", "d4_d8_S. cerevisiae"), Z = c(2, 0, -1, log2(2/3), log2(3), log2(1/6), log2(6)))
+ev <- ev %>% left_join(df1, by =c("lab_species" = "species"))
+ev$seq_run_var <- paste0(ev$seqcharge_file, ev$variable)
+ev <- ev %>% dplyr::group_by(seq_run_var) %>% dplyr::add_count() %>% dplyr::filter(n==2) #require quant in MS1 and MS2
+ev <- ev[!is.na(ev$Z),] #removes human in d0_d8 and d4_d8 comparisons because they compare U937 and Jurkat cell lines
+ev <- ev %>% dplyr::select(-"n")
+ev$error <- abs(log2(ev$value)-ev$Z)
+MS1_info <- ev
+
+#combine MS1 and MS2 results:
+all <- bind_rows(MS1_info,MS2_info)
+all <- all %>% add_count(seq_run_var) %>% dplyr::filter(n==4) #quantified for all
+all <- all %>% dplyr::mutate("Cond" = ifelse(grepl("MS1", Quant), "MS1", "MS2")) %>% 
+  dplyr::mutate("Type" = ifelse(grepl("trans", Quant), "Translated", "Not translated"))
+nrow(all)/4
+ggplot(all, aes(x=as.factor(Type),y=error, fill=Type)) +
+  geom_boxplot( alpha =0.7, outlier.shape=NA) +
+  facet_grid(~Cond) +
+  scale_fill_manual(values = c("#F2D096","#ED8975")) +
+  theme_classic() +
+  coord_cartesian(ylim = c(0,5)) +
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_text(size=16),
+        axis.title.y = element_text(size=16),
+        axis.ticks.x = element_blank(),
+        plot.subtitle = element_blank(),
+        plot.title = element_blank(),
+        strip.text.x = element_text(size=16),
+        legend.text = element_text(size=16))+
+  labs(x = "", y=expression(paste("|",Log["2"],", Precursor Ratio Error|")), fill = "")
+ggsave("RatioError_MS1_MS2_facets.pdf", width=4.3,height=4.5)
+
+```

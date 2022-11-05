@@ -1,0 +1,193 @@
+---
+title: "RT_deviation"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Functions
+```{r}
+pD_channel <- function(df){
+  
+  df <- df %>% dplyr::mutate("channel_name" = ifelse(grepl("-0|mTRAQ0", Modified.Sequence), "mTRAQ0",
+                                              ifelse(grepl("-4|mTRAQ4", Modified.Sequence), "mTRAQ4", "mTRAQ8")))
+  
+  return(df)
+}
+
+pD_seqcharge <- function(df){
+  df$seqcharge <- paste0(df$Modified.Sequence, df$Precursor.Charge)
+  df$seqcharge <- str_remove_all(df$seqcharge, "\\(mTRAQ0\\)")
+  df$seqcharge <- str_remove_all(df$seqcharge, "\\(mTRAQ\\)")
+  df$seqcharge <- str_remove_all(df$seqcharge, "\\(mTRAQ-K-0\\)")
+  df$seqcharge <- str_remove_all(df$seqcharge, "\\(mTRAQ-n-0\\)")
+  df$seqcharge <- str_remove_all(df$seqcharge, "\\(mTRAQ4\\)")
+  df$seqcharge <- str_remove_all(df$seqcharge, "\\(mTRAQ-K-4\\)")
+  df$seqcharge <- str_remove_all(df$seqcharge, "\\(mTRAQ-n-4\\)")
+  df$seqcharge <- str_remove_all(df$seqcharge, "\\(mTRAQ8\\)")
+  df$seqcharge <- str_remove_all(df$seqcharge, "\\(mTRAQ-K-8\\)")
+  df$seqcharge <- str_remove_all(df$seqcharge, "\\(mTRAQ-n-8\\)")
+  return(df)
+}
+
+
+```
+
+Library and file paths
+```{r}
+
+library(stringr)
+library(dplyr)
+library(reshape2)
+library(ggplot2)
+library(readr)
+library(data.table)
+
+SC_fpath <- "\eJD1443_45\Report.tsv" #DIANN report file
+
+meta_fpath <- "" #meta file
+
+eJD1443_fpath <- "\eJD1443.features.tsv" #features tsv file
+eJD1444_fpath <- "\eJD1444.features.tsv" #features tsv file
+eJD1445_fpath <- "\eJD1445.features.tsv" #features tsv file
+
+```
+
+Retention time deviations
+```{r}
+meta <- read.delim(meta_fpath)
+meta$run_chan <- paste0(meta$Raw, "mTRAQ",meta$Label)
+SC <- read.delim(SC_fpath)
+SC <- pD_seqcharge(SC)
+SC <- pD_channel(SC)
+SC$run_chan <- paste0(SC$Run, SC$channel_name)
+SC <- SC %>% left_join(meta, by =c("run_chan"="run_chan"))
+SC <- SC[which(SC$Ms1.Area>0),]
+eJD1443_features <- data.frame(fread(eJD1443_fpath))
+eJD1444_features <- data.frame(fread(eJD1444_fpath))
+eJD1445_features <- data.frame(fread(eJD1445_fpath))
+eJD1443_features$run_name <- "eJD1443"
+eJD1444_features$run_name <- "eJD1444"
+eJD1445_features$run_name <- "eJD1445"
+features <- rbind(eJD1443_features, eJD1444_features, eJD1445_features)
+
+#match DIANN output of sequences to the Dinosaur MS1-based apex RTs
+SC$Precursor.Mz_lower <- SC$Precursor.Mz-(5*SC$Precursor.Mz)/(1000000) #5 ppm either side of the specified mz
+SC$Precursor.Mz_upper <- SC$Precursor.Mz+(5*SC$Precursor.Mz)/(1000000) #5 ppm either side of the specified mz
+
+SC_dt <- setDT(SC)
+features_dt <- setDT(features) # converting to data.table in place
+
+SC_1 <- SC_dt[features_dt, on = .(Precursor.Mz_lower < mz, Precursor.Mz_upper > mz), nomatch = 0,]
+
+SC_1 <- SC_1 %>% filter(RT.Start < rtApex, RT.Stop > rtApex)
+SC_1 <- SC_1[SC_1$Run==SC_1$run_name,]
+SC_1 <- data.frame(SC_1)
+
+SC_lim <- SC_1[!grepl("Mel|Neg", SC_1$Celltype),]
+SC_lim$seq_run <- paste0(SC_lim$seqcharge,SC_lim$Run)
+SC_lim$seq_run_cell <- paste0(SC_lim$seqcharge,SC_lim$Run,SC_lim$Celltype)
+SC_lim <- SC_lim %>% dplyr::add_count(seq_run_cell) %>% dplyr::filter(n==1) %>% ungroup()
+SC_lim <- SC_lim %>% dplyr::select(seq_run, rtApex, Celltype)
+
+# PDAC - U-937 RT deviation... within a run and across runs
+within <- reshape2::dcast(SC_lim, seq_run~Celltype, value.var="rtApex")
+within <- na.omit(within)
+within$d_RT <- within$PDAC-within$`U-937`
+within$xx <- "within"
+within <- within %>% dplyr::select(xx, d_RT)
+SC <- SC_1[!grepl("Mel|Neg", SC$Celltype),]
+SC_lim <- SC %>% dplyr::select(seqcharge, rtApex, Predicted.RT, Run)
+SC_lim$seq_run <- paste0(SC_lim$seqcharge,SC_lim$Run)
+
+# PDAC - U-937 RT deviation... within a run and across runs
+pred_emp <- na.omit(SC_lim)
+pred_emp$d_RT <- pred_emp$Predicted.RT-pred_emp$rtApex
+pred_emp$xx <- "predicted-emperical"
+pred_emp <- pred_emp %>% dplyr::select(xx, d_RT)
+both <- rbind(within, pred_emp)
+both$d_RT <- both$d_RT*60
+
+all_plotting <- both %>% mutate("condition" = ifelse(grepl("within", xx), "1", "2")) %>% dplyr::select("d_RT", "condition")
+write.table(all_plotting, "deltaRT_10222022.txt", sep = "\t", row.names = FALSE)
+
+ggplot(both, aes(x=d_RT)) + 
+    geom_histogram(data=subset(both,xx == 'within'),aes(fill = xx), alpha = 0.3, bins=60) +
+    geom_histogram(data=subset(both,xx == 'predicted-emperical'),aes(fill = xx), alpha = 0.3, bins=60) +
+  theme_bw() + labs(x=expression(Delta~RT)) + 
+  scale_fill_manual(name="RT deviation", values=c("blue","red"),labels=c("Aligned RT - emperical RT","within a run: PDAC - U937")) +
+  theme(legend.position = "top")+
+  xlim(-12,12)
+
+#################################################
+#################################################
+############     top 10% most abundant precursors
+#################################################
+#################################################
+
+SC <- read.delim(SC_fpath)
+SC <- pD_seqcharge(SC)
+SC <- pD_channel(SC)
+SC$run_chan <- paste0(SC$Run, SC$channel_name)
+SC <- SC %>% left_join(meta, by =c("run_chan"="run_chan"))
+SC <- SC[which(SC$Ms1.Area>0),]
+
+#match DIANN output of sequences to the Dinosaur MS1-based apex RTs
+SC$Precursor.Mz_lower <- SC$Precursor.Mz-(5*SC$Precursor.Mz)/(1000000) #5 ppm either side of the specified mz
+SC$Precursor.Mz_upper <- SC$Precursor.Mz+(5*SC$Precursor.Mz)/(1000000) #5 ppm either side of the specified mz
+SC <- SC[!grepl("-0", SC$Precursor.Id),] #remove the Melanoma cells that are mTRAQ-0 labeled.
+SC <- SC[which(SC$Ms1.Area>0),]
+SC_keep <- SC %>% dplyr::group_by(seqcharge) %>% dplyr::mutate("mean_ab" = mean(Ms1.Area)) %>% 
+  dplyr::ungroup() %>% distinct(seqcharge, .keep_all=T) %>%
+  dplyr::filter(mean_ab>quantile(mean_ab, 0.9))
+SC <- SC[SC$seqcharge%in%SC_keep$seqcharge,]
+
+SC_dt <- setDT(SC)
+features_dt <- setDT(features) # converting to data.table in place
+
+SC_1 <- SC_dt[features_dt, on = .(Precursor.Mz_lower < mz, Precursor.Mz_upper > mz), nomatch = 0,]
+
+SC_1 <- SC_1 %>% filter(RT.Start < rtApex, RT.Stop > rtApex)
+SC_1 <- SC_1[SC_1$Run==SC_1$run_name,]
+SC_1 <- data.frame(SC_1)
+
+SC_lim <- SC_1[!grepl("Mel|Neg", SC_1$Celltype),]
+SC_lim$seq_run <- paste0(SC_lim$seqcharge,SC_lim$Run)
+SC_lim$seq_run_cell <- paste0(SC_lim$seqcharge,SC_lim$Run,SC_lim$Celltype)
+SC_lim <- SC_lim %>% dplyr::add_count(seq_run_cell) %>% dplyr::filter(n==1) %>% ungroup()
+SC_lim <- SC_lim %>% dplyr::select(seq_run, rtApex, Celltype)
+
+# PDAC - U-937 RT deviation... within a run and across runs
+within <- reshape2::dcast(SC_lim, seq_run~Celltype, value.var="rtApex")
+within <- na.omit(within)
+within$d_RT <- within$PDAC-within$`U-937`
+within$xx <- "within"
+within <- within %>% dplyr::select(xx, d_RT)
+
+SC <- SC_1[!grepl("Mel|Neg", SC$Celltype),]
+SC_lim <- SC %>% dplyr::select(seqcharge, rtApex, Predicted.RT, Run)
+SC_lim$seq_run <- paste0(SC_lim$seqcharge,SC_lim$Run)
+
+# PDAC - U-937 RT deviation... within a run and across runs
+pred_emp <- na.omit(SC_lim)
+pred_emp$d_RT <- pred_emp$Predicted.RT-pred_emp$rtApex
+pred_emp$xx <- "predicted-emperical"
+pred_emp <- pred_emp %>% dplyr::select(xx, d_RT)
+both <- rbind(within, pred_emp)
+both$d_RT <- both$d_RT*60
+
+top10_plotting <- both %>% mutate("condition" = ifelse(grepl("within", xx), "1", "2")) %>% dplyr::select("d_RT", "condition")
+write.table(top10_plotting, "deltaRT_top10_11022022.txt", sep = "\t", row.names = FALSE)
+
+
+ggplot(both, aes(x=d_RT)) + 
+    geom_histogram(data=subset(both,xx == 'within'),aes(fill = xx), alpha = 0.3, bins=60) +
+    geom_histogram(data=subset(both,xx == 'predicted-emperical'),aes(fill = xx), alpha = 0.3, bins=60) +
+  theme_bw() + labs(x=expression(Delta~RT)) + 
+  scale_fill_manual(name="RT deviation", values=c("blue","red"),labels=c("Aligned RT - emperical RT","within a run: PDAC - U937")) +
+  theme(legend.position = "top")+
+  xlim(-12,12)
+
+```
