@@ -1,5 +1,5 @@
 # plexDIA *Perspective*
-## Strategies for increasing the depth and throughput of protein analysis by plexDIA   
+### Strategies for increasing the depth and throughput of protein analysis by plexDIA   
 
 
 <!--![GitHub release](https://img.shields.io/github/release/SlavovLab/DO-MS.svg)-->
@@ -30,4 +30,4 @@ DIA-NN and Dinosaur outputs are required to run the code. Please visit MassIVE M
 
 1) "pD_HYE_MS1_Report.tsv" to run the code to generate figures for the translated vs not-translated quantitation.
 2) "eJD1443_45_Report.tsv", "eJD1443.features.tsv", "eJD1444.features.tsv", and "eJD1445.features.tsv" to run the code to generate figures for the RT-deviations within and between runs.
-3) "deltaRT_10222022.txt" and "deltaRT_top10_11022022.txt" that contain source data for Figure 3 
+3) "deltaRT_10222022.txt" and "deltaRT_top10_11022022.txt" that contain source data for Figure 3
