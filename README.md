@@ -6,7 +6,7 @@
 ![GitHub](https://img.shields.io/github/license/SlavovLab/DO-MS.svg)
 
 * **plexDIA Websites:** [plexDIA.slavovlab.net](https://plexDIA.slavovlab.net) &nbsp; | &nbsp; [scp.slavovlab.net/plexDIA](https://scp.slavovlab.net/plexDIA)
-* **Perspective article:** [Preprint](https://www.biorxiv.org/content/10.1101/2022.11.05.515287v1) <!-- &nbsp; | &nbsp; [*Nature Biotechnology* Article](https://doi.org/10.1038/s41587-022-01389-w) -->
+* **Perspective article:** [Preprint](https://www.biorxiv.org/content/10.1101/2022.11.05.515287v1) &nbsp; | &nbsp; [*J. Proteome Res.* Article](https://pubs.acs.org/doi/10.1021/acs.jproteome.2c00721)
 
 
 &nbsp;
@@ -31,3 +31,9 @@ DIA-NN and Dinosaur outputs are required to run the code. Please visit MassIVE M
 1) "pD_HYE_MS1_Report.tsv" to run the code to generate figures for the translated vs not-translated quantitation.
 2) "eJD1443_45_Report.tsv", "eJD1443.features.tsv", "eJD1444.features.tsv", and "eJD1445.features.tsv" to run the code to generate figures for the RT-deviations within and between runs.
 3) "deltaRT_10222022.txt" and "deltaRT_top10_11022022.txt" that contain [source data for Figure 3](https://drive.google.com/drive/folders/1eOntI0B-i5NK66DnDXnqZp2SvCPvl10R?usp=sharing).
+
+
+-----
+
+
+Jason Derks, Nikolai Slavov, **Strategies for increasing the depth and throughput of protein analysis by plexDIA**, *J. Proteome Res.*, doi: [10.1021/acs.jproteome.2c00721](https://pubs.acs.org/doi/10.1021/acs.jproteome.2c00721); Preprint at bioRxiv 2022.11.05.515287; doi: [10.1101/2022.11.05.515287](https://doi.org/10.1101/2022.11.05.515287)
